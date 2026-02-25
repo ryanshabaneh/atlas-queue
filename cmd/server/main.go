@@ -13,6 +13,7 @@ import (
 	"github.com/yourorg/atlas/internal/db"
 	"github.com/yourorg/atlas/internal/grpcserver"
 	"github.com/yourorg/atlas/internal/migrate"
+	"google.golang.org/grpc/reflection"
 )
 
 func getenv(key, def string) string {
@@ -69,6 +70,7 @@ func main() {
 	// Build and start gRPC server.
 	srv := grpcserver.New(pool, rc)
 	grpcSrv := grpcserver.NewGRPCServer(srv)
+	reflection.Register(grpcSrv)
 
 	lis, err := net.Listen("tcp", ":"+grpcPort)
 	if err != nil {

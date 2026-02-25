@@ -29,13 +29,29 @@ services:
       context: .
       dockerfile: Dockerfile
     working_dir: /workspace
-    # Keep the binary as PID 1. In the phase5 test override, the injected
-    # `command` becomes inert argv to this entrypoint instead of spawning `sh`.
     entrypoint: ['/workspace/worker']
     command: []
     environment:
       DATABASE_URL: postgres://atlas:atlas@postgres:5432/atlas
       REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /workspace
+    entrypoint: ['/workspace/server']
+    command: []
+    environment:
+      DATABASE_URL: postgres://atlas:atlas@postgres:5432/atlas
+      REDIS_URL: redis://redis:6379
+    ports:
+      - '50051:50051'
     depends_on:
       postgres:
         condition: service_healthy

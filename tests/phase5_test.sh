@@ -168,8 +168,9 @@ services:
 
   worker:
     image: golang:1.22-bookworm
+    entrypoint: []
     working_dir: /workspace
-    command: ["sh", "-c", "go run ./cmd/worker"]
+    command: ["sh", "-c", "exec go run ./cmd/worker"]
     environment:
       DATABASE_URL: postgres://atlas:atlas@postgres:5432/atlas
       REDIS_URL: redis://redis:6379
