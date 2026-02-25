@@ -1,0 +1,82 @@
+syntax = "proto3";
+package atlas;
+option go_package = "github.com/yourorg/atlas/proto";
+
+import "google/protobuf/duration.proto";
+
+service AtlasQueue {
+    rpc SubmitJob         (SubmitJobRequest)     returns (SubmitJobResponse);
+    rpc GetJobStatus      (GetJobStatusRequest)  returns (JobStatusResponse);
+    rpc CancelJob         (CancelJobRequest)     returns (CancelJobResponse);
+    rpc GetJobHistory     (GetJobHistoryRequest) returns (JobHistoryResponse);
+    rpc StreamJobUpdates  (StreamRequest)        returns (stream JobEvent);
+    rpc GetQueueHealth    (QueueHealthRequest)   returns (QueueHealthResponse);
+}
+
+message SubmitJobRequest {
+    string queue            = 1;
+    string handler_name     = 2;
+    bytes  payload          = 3;
+    string idempotency_key  = 4;
+    int32  priority         = 5;
+    int32  max_retries      = 6;
+    google.protobuf.Duration delay = 7;
+}
+
+message SubmitJobResponse {
+    string job_id    = 1;
+    string state     = 2;
+    bool   inserted  = 3;
+}
+
+message GetJobStatusRequest { string job_id = 1; }
+
+message JobStatusResponse {
+    string job_id                = 1;
+    string state                 = 2;
+    string current_execution_id  = 3;
+    int32  retry_count           = 4;
+    string last_error            = 5;
+    int32  state_version         = 6;
+    bool   cancel_requested      = 7;
+}
+
+message CancelJobRequest { string job_id = 1; }
+
+message CancelJobResponse {
+    bool found     = 1;
+    bool immediate = 2;
+}
+
+message GetJobHistoryRequest { string job_id = 1; }
+message JobHistoryResponse   { repeated ExecutionEntry entries = 1; }
+
+message ExecutionEntry {
+    string execution_id     = 1;
+    string worker_hostname  = 2;
+    int32  attempt          = 3;
+    string started_at       = 4;
+    string finished_at      = 5;
+    string outcome          = 6;
+    string error_message    = 7;
+    string trace_id         = 8;
+}
+
+message StreamRequest { string job_id = 1; }
+
+message JobEvent {
+    string job_id           = 1;
+    string state            = 2;
+    int32  state_version    = 3;
+    bool   cancel_requested = 4;
+}
+
+message QueueHealthRequest { string queue = 1; }
+
+message QueueHealthResponse {
+    string queue              = 1;
+    int64  concurrency_limit  = 2;
+    int64  inflight           = 3;
+    double p99_latency_ms     = 4;
+    double error_rate         = 5;
+}

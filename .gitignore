@@ -1,0 +1,19 @@
+# Go build cache
+.gocache/
+go-build/
+
+# Binaries
+bin/
+*.exe
+*.out
+*.test
+
+# OS junk
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Env
+.env
