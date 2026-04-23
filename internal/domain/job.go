@@ -56,7 +56,7 @@ type Worker struct {
 // ExecutionLog is the history of every attempt ever made on a job.
 // The jobs table tracks current state. This table tracks every attempt — never changes, only appends.
 type ExecutionLog struct {
-	ID             uuid.UUID  // unique ID for this attempt
+	ID             uuid.UUID  // unique ID for this attempt database key
 	JobID          uuid.UUID  // which job this attempt belongs to
 	WorkerID       uuid.UUID  // which worker ran it
 	WorkerHostname string     // which machine ran it
