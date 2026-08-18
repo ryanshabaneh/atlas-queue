@@ -3,6 +3,8 @@ package worker
 import (
 	"context"
 	"log/slog"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,7 +56,7 @@ func RunReaper(ctx context.Context, pool *pgxpool.Pool,
 // worker to win the election).
 func runReaperLoop(ctx context.Context, _ *pgx.Conn,
 	pool *pgxpool.Pool, rc *redis.Client, logger *slog.Logger) {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(reaperInterval())
 	defer ticker.Stop()
 
 	for {
@@ -171,4 +173,16 @@ func reapDeadWorkers(ctx context.Context, pool *pgxpool.Pool,
 		logger.Info("reaper: marked workers dead",
 			"count", result.RowsAffected())
 	}
+}
+
+// reaperInterval is how often the elected reaper sweeps for expired leases.
+// Shorter intervals reclaim a crashed worker's jobs sooner at the cost of more
+// queries per minute. Overridable via REAPER_INTERVAL_SECONDS for benchmarking.
+func reaperInterval() time.Duration {
+	if v := os.Getenv("REAPER_INTERVAL_SECONDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	return 5 * time.Second
 }

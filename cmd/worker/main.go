@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -117,7 +118,15 @@ func main() {
 	workerID := uuid.New()
 	queues := []string{"default", "emails", "notifications"}
 
-	w := worker.New(workerID, hostname, queues, pool, reg, logger, 30)
+	// Lease length bounds how long a crashed worker's job sits unreclaimed.
+	leaseSeconds := 15
+	if v := os.Getenv("LEASE_SECONDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			leaseSeconds = n
+		}
+	}
+
+	w := worker.New(workerID, hostname, queues, pool, reg, logger, leaseSeconds)
 
 	logger.Info("registering worker", "worker_id", workerID, "hostname", hostname, "queues", queues)
 	if err := worker.RegisterWorker(ctx, pool, w); err != nil {
