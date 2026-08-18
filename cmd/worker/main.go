@@ -83,6 +83,16 @@ func main() {
 		return nil
 	})
 
+	// bench_handler: sleeps 50 ms, respecting context cancellation. 
+	reg.Register("bench_handler", func(ctx context.Context, payload []byte) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+			return nil
+		}
+	})
+
 	// slow_handler: sleeps 30 s, respecting context cancellation.
 	// Used to observe lease extension and cooperative cancellation.
 	reg.Register("slow_handler", func(ctx context.Context, payload []byte) error {
