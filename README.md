@@ -4,9 +4,8 @@ Atlas Queue is a distributed job processing system designed to provide
 crash-safe execution, idempotent submission, and deterministic recovery
 without relying on external brokers like Kafka or SQS.
 
-It uses PostgreSQL row-level leasing (`FOR UPDATE SKIP LOCKED`) and a
-Redis-backed reaper election mechanism to guarantee zero duplicate
-completion under worker failure.
+It uses PostgreSQL row-level leasing (`FOR UPDATE SKIP LOCKED`), execution-ID fencing, 
+and advisory-lock reaper election to guarantee zero duplicate completion under worker failure.
 
 **Stack:** Go, PostgreSQL, Redis, gRPC, Docker
 
