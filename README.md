@@ -4,14 +4,14 @@ Atlas Queue is a distributed job processing system designed to provide
 crash-safe execution, idempotent submission, and deterministic recovery
 without relying on external brokers like Kafka or SQS.
 
-It uses PostgreSQL row-level leasing (`FOR UPDATE SKIP LOCKED`), execution-ID fencing, 
+It uses PostgreSQL row-level leasing (`FOR UPDATE SKIP LOCKED`), execution-ID fencing,
 and advisory-lock reaper election to guarantee zero duplicate completion under worker failure.
 
-**Stack:** Go, PostgreSQL, Redis, gRPC, Docker
+**Stack:** Go, PostgreSQL, gRPC, Docker
 
 ## Guarantees
 
-- At-most-once completion (no duplicate executions)
+- Exactly-once completion; at-least-once execution (handlers should be idempotent)
 - Crash-safe job recovery
 - Idempotent job submission
 - Deterministic execution logging
@@ -25,17 +25,19 @@ Validated under concurrent workers with forced SIGKILL, lease expiration, and or
   grpcurl / client
         │
         ▼
-  ┌─────────────┐        ┌──────────────┐
-  │ gRPC Server │───────▶│  PostgreSQL  │◀──── Workers
-  │  :50051     │        │  (jobs +     │      (claim, execute,
-  └─────────────┘        │  exec_log)   │       heartbeat)
-                         └──────────────┘
-                                │
-                         ┌──────────────┐
-                         │    Redis     │
-                         │ (reaper lock)│
-                         └──────────────┘
+  ┌─────────────┐        ┌──────────────┐  claim / heartbeat  ┌──────────────┐
+  │ gRPC Server │───────▶│  PostgreSQL  │◀────────────────────│   Workers    │
+  │  :50051     │        │  jobs        │                     │  (one holds  │
+  └─────────────┘        │  exec_log    │────────────────────▶│  the reaper  │
+                         │  workers     │  NOTIFY job_ready   │  advisory    │
+                         └──────────────┘                     │  lock)       │
+                                                              └──────────────┘
 ```
+
+PostgreSQL is the only coordination point: it is the queue, the lease
+store, the wakeup channel (LISTEN/NOTIFY) and the reaper election (advisory
+lock). Redis runs alongside for the per-queue concurrency limiter, which is
+not yet enforced.
 
 State machine: `pending → running → completed | canceled | dead`
 
@@ -136,9 +138,9 @@ renewed — because the worker is dead — the reaper marks the execution row
 The job is never lost and never completed twice.
 
 **Worker shutdown (SIGTERM)**
-The worker finishes its current job, then exits. The lease expires naturally
-and the job is reclaimed by the reaper. The execution is marked `orphaned`,
-not `canceled`, so retry budget is preserved.
+SIGTERM cancels the running handler's context. The job keeps its lease and is
+reclaimed by the reaper once the lease expires. The execution is marked
+`orphaned`, not `canceled`, so retry budget is preserved.
 
 **Cooperative cancellation**
 `CancelJob` on a pending job transitions it to `canceled` immediately.
