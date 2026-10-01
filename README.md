@@ -80,6 +80,53 @@ Available handlers: `noop_handler`, `slow_handler` (30 s), `fail_handler`,
 
 Available queues: `default`, `emails`, `notifications`.
 
+## Job pickup
+
+Idle workers block on PostgreSQL `LISTEN job_ready` instead of polling.
+Triggers (migration `005`) call `pg_notify('job_ready', queue)` whenever a
+job becomes claimable: on insert as `pending`, and when a retry or reaper
+reclaim moves a job back to `pending`.
+
+Each worker loop:
+
+1. Drains: claims and runs jobs until `ClaimJob` returns nothing.
+2. Waits on its dedicated LISTEN connection until a notification for one of
+   its queues arrives, or a timeout of
+   `min(5s fallback, time until the next pending scheduled_at)` elapses.
+
+The `scheduled_at`-aware timeout keeps delayed jobs and retry backoffs prompt
+without fast polling. The 5 s fallback covers any missed notification. If the
+LISTEN connection drops, the worker polls every 500 ms while it reconnects
+(backoff 500 ms → 10 s). Several workers waking on one notification is fine:
+`FOR UPDATE SKIP LOCKED` hands the job to exactly one of them.
+
+`ATLAS_PICKUP_MODE=poll` restores the original 500 ms polling loop
+(default: `listen`).
+
+### Benchmark
+
+```bash
+scripts/bench_pickup.sh              # WORKERS=1 N=300 by default
+WORKERS=4 scripts/bench_pickup.sh
+```
+
+For each mode the script starts a fresh stack and enqueues `N` `noop_handler`
+jobs 50–100 ms apart so they arrive at idle workers. It reports pickup latency
+as `execution_log.started_at - jobs.created_at`, with both timestamps taken
+from the database clock. A run with any incomplete job is marked `INVALID` and
+reports no percentiles.
+
+Pickup latency in ms (workers=1, n=300, seed=1; all 300 jobs completed in
+both modes; Docker Desktop on an arm64 Mac):
+
+| | poll | listen |
+|---|---|---|
+| p50 | 263.2 | 4.4 |
+| p95 | 478.4 | 31.8 |
+| p99 | 498.0 | 33.7 |
+| max | 521.0 | 111.6 |
+| avg | 257.6 | 10.2 |
+
 ## Failure recovery
 
 **Worker crash (SIGKILL / OOM)**
