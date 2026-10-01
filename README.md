@@ -133,7 +133,7 @@ both modes; Docker Desktop on an arm64 Mac):
 
 **Worker crash (SIGKILL / OOM)**
 The worker holds a 30-second lease on any running job. If the lease is not
-renewed — because the worker is dead — the reaper marks the execution row
+renewed because the worker is dead the reaper marks the execution row
 `orphaned`, returns the job to `pending`, and a healthy worker picks it up.
 The job is never lost and never completed twice.
 
