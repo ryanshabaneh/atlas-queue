@@ -1,3 +1,5 @@
+// Loop forever: claim a job, look up its handler,
+// run it, write the outcome back. Repeat
 package worker
 
 import (
@@ -15,13 +17,20 @@ import (
 )
 
 type Worker struct {
-	ID            uuid.UUID
-	Hostname      string
-	Queues        []string
-	Pool          *pgxpool.Pool
-	Registry      *registry.Registry
-	Logger        *slog.Logger
-	LeaseSeconds  int
+	ID           uuid.UUID
+	Hostname     string
+	Queues       []string
+	Pool         *pgxpool.Pool
+	Registry     *registry.Registry
+	Logger       *slog.Logger
+	LeaseSeconds int
+
+	// PickupMode selects how an idle worker learns about new jobs. See pickup.go.
+	PickupMode PickupMode
+	// FallbackInterval caps how long a listening worker waits without a
+	// notification before re-checking, in case a NOTIFY is ever missed.
+	FallbackInterval time.Duration
+
 	startDone     chan struct{}
 	startDoneOnce sync.Once
 }
@@ -46,11 +55,15 @@ func New(
 		Registry:     reg,
 		Logger:       logger,
 		LeaseSeconds: leaseSeconds,
-		startDone:    make(chan struct{}),
+
+		PickupMode:       PickupListen,
+		FallbackInterval: defaultFallbackInterval,
+
+		startDone: make(chan struct{}),
 	}
 }
 
-// Start runs the poll loop until ctx is canceled. Each job is executed
+// Start runs the claim loop until ctx is canceled. Each job is executed
 // synchronously; per-job goroutines for lease extension and cooperative
 // cancellation live only for the duration of that job.
 func (w *Worker) Start(ctx context.Context) {
@@ -59,10 +72,21 @@ func (w *Worker) Start(ctx context.Context) {
 	w.Logger.Info("worker starting",
 		"worker_id", w.ID,
 		"queues", w.Queues,
-		"handlers", w.Registry.Names())
+		"handlers", w.Registry.Names(),
+		"pickup_mode", w.PickupMode)
 
+	if w.PickupMode == PickupPoll {
+		w.pollLoop(ctx)
+		return
+	}
+	w.listenLoop(ctx)
+}
+
+// pollLoop is the original fixed-interval loop: claim, and sleep 500ms
+// whenever the queues are empty. Kept for benchmarking against listenLoop.
+func (w *Worker) pollLoop(ctx context.Context) {
 	for {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil { //someone called cancel() in main
 			return
 		}
 
@@ -108,9 +132,9 @@ func (w *Worker) runJob(ctx context.Context, job *domain.Job, execID uuid.UUID) 
 		log.Error("failed to write exec log start", "err", err)
 		_, _ = markRetry(ctx, w.Pool, job, execID, fmt.Errorf("execution log write failed: %w", err))
 		return
-	}
+	} // DB row: "attempt N of job X started at time Y"
 
-	log.Info("job started")
+	log.Info("job started") // Terminal line output - realtime debugging
 
 	handler, err := w.Registry.Lookup(job.HandlerName)
 	if err != nil {

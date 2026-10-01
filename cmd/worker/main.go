@@ -36,6 +36,14 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 
+	// ATLAS_PICKUP_MODE=poll|listen (default listen). poll keeps the original
+	// 500ms sleep loop available from the same binary for benchmarking.
+	pickupMode, err := worker.ParsePickupMode(os.Getenv("ATLAS_PICKUP_MODE"))
+	if err != nil {
+		logger.Error("invalid ATLAS_PICKUP_MODE", "err", err)
+		os.Exit(1)
+	}
+
 	if err := worker.EnableParentDeathSignal(); err != nil {
 		logger.Warn("failed to enable parent-death signal", "err", err)
 	}
@@ -118,6 +126,7 @@ func main() {
 	queues := []string{"default", "emails", "notifications"}
 
 	w := worker.New(workerID, hostname, queues, pool, reg, logger, 30)
+	w.PickupMode = pickupMode
 
 	logger.Info("registering worker", "worker_id", workerID, "hostname", hostname, "queues", queues)
 	if err := worker.RegisterWorker(ctx, pool, w); err != nil {
